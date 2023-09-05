@@ -3,6 +3,7 @@ I took the [Bare Bones](https://wiki.osdev.org/Bare_Bones) x86 C kernel tutorial
 - Implementing keyboard input reading,
 - Implementing typing on the screen w/ ASCII characters,
 - Newline support and screen scrolling.
+- Having a permanent terminal title
 
 ...which makes it a DOS-like command line rather than a poor 'Hello World'.
 
