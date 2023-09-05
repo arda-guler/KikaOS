@@ -10,6 +10,8 @@
 #error "Use an ix86-elf compiler. Terminating..."
 #endif
 
+#define COMMAND_BUFFER_SIZE 64
+
 enum vga_color {
 	VGA_COLOR_BLACK = 0,
 	VGA_COLOR_BLUE = 1,
@@ -35,7 +37,7 @@ char ASCII_uppercase[128] =
 {
     0,  27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b',
     '\t', /* <-- Tab */
-    'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '[', ']', '\n',
+    'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '[', ']', '\n', // <-- 28: ENTER
     0, /* <-- control key */
     'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ';', '\'', '`',  0, '\\', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', ',', '.', '/',   0,
     '*',
@@ -70,7 +72,7 @@ char ASCII_lowercase[128] =
 {
     0,  27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b',
     '\t', /* <-- Tab */
-    'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n',
+    'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n', // <-- 28: ENTER
     0, /* <-- control key */
     'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`',  0, '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/',   0,
     '*',
@@ -101,7 +103,13 @@ char ASCII_lowercase[128] =
     0,  /* All other keys are undefined */
 };
 
-char command_buffer[64];
+char command_buffer[COMMAND_BUFFER_SIZE];
+
+const char *commands[] = {
+	"help",
+	"title"
+};
+
 
 static inline uint8_t vga_entry_color(enum vga_color fg, enum vga_color bg)
 {
@@ -171,6 +179,26 @@ void terminal_scroll(void)
             terminal_buffer[idx_terminal_read] = vga_entry(' ', terminal_color);
         }
     }
+}
+
+void terminal_setTitle(const char* title) {
+    size_t prev_terminal_row = terminal_row;
+    size_t prev_terminal_column = terminal_column;
+
+    terminal_row = 0;
+    terminal_column = 0;
+
+    for (size_t idx_x = 0; idx_x < VGA_WIDTH; idx_x++){
+        terminal_putChar(' ');
+    }
+
+    terminal_row = 0;
+    terminal_column = 0;
+
+    terminal_printString(title);
+
+    terminal_row = prev_terminal_row;
+    terminal_column = prev_terminal_column;
 }
 
 void terminal_putChar(char c)
@@ -249,14 +277,26 @@ void wait(size_t wait_time){
     }
 }
 
+void clear_command_buffer(void) {
+	for (size_t i=0; i < COMMAND_BUFFER_SIZE; i++){
+		command_buffer[i] = 0;
+	}
+}
+
+// placeholder function
+void interpret_command(void) {
+	asm volatile("nop");
+}
+
 void main(void)
 {
 	terminal_init();
-    terminal_printString(" = = = KikaOS Terminal = = =\n\n");
-    terminal_printString("Write or draw away!\n > ");
+    terminal_setTitle("= = = KikaOS Terminal = = =");
+    terminal_printString("\n\nWrite or draw away!\n > ");
 
     // writes keyboard input onto the screen
     char c_inp = 0;
+	size_t command_buffer_idx = 0;
     while(c_inp != 1) {
 
         c_inp = get_kbd(c_inp);
@@ -265,13 +305,24 @@ void main(void)
             type_uppercase = !type_uppercase;
         }
 
+		else if (c_inp == 28) {
+			interpret_command();
+			clear_command_buffer();
+			terminal_printString("\n > ");
+			wait(1);
+		}
+
         else if (c_inp > 0) {
+			char ASCII_char;
             if (type_uppercase) {
-                terminal_putChar(ASCII_uppercase[c_inp]);
+				ASCII_char = ASCII_uppercase[c_inp];
             }
             else {
-                terminal_putChar(ASCII_lowercase[c_inp]);
+				ASCII_char = ASCII_lowercase[c_inp];
             }
+			terminal_putChar(ASCII_char);
+			command_buffer[command_buffer_idx] = ASCII_char;
+			command_buffer_idx += 1;
             wait(1);
         }
     }
