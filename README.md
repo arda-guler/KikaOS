@@ -3,14 +3,11 @@ I took the [Bare Bones](https://wiki.osdev.org/Bare_Bones) x86 C kernel tutorial
 - Implementing keyboard input reading,
 - Implementing typing on the screen w/ ASCII characters,
 - Newline support and screen scrolling.
-- Having a permanent terminal title
+- Basic command interpreter
+- Implementing terminal title
+- Pseudo-random number generator
 
 ...which makes it a DOS-like command line rather than a poor 'Hello World'.
-
-That's all. Nothing shiny, nothing fancy.
-Next step would be to run other terminal functions by taking user inputs as commands.
-
-As is, the operating system is merely a digital typewriter.
 
 ![scr1](https://github.com/arda-guler/KikaOS/blob/master/images/kikaos.jpg)
 
