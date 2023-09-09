@@ -114,7 +114,8 @@ char commands[MAX_NUM_COMMANDS][MAX_COMMAND_LENGTH] = {
 	"clear",
 	"wait inc",
 	"wait dec",
-	"color"
+	"color",
+	"rng"
 };
 
 int strcmp(const char* str1, const char* str2) {
@@ -330,7 +331,7 @@ char get_kbd(char c)
 // this is probably one of the worst implementations of 'wait' ever.
 // P.S. I don't have interrupts.
 void wait(size_t wait_time){
-    for (size_t ticks=0; ticks < wait_time * 100000000; ticks++) {
+    for (size_t ticks = 0; ticks < wait_time * 100000000; ticks++) {
         asm volatile("nop");
     }
 }
@@ -375,6 +376,13 @@ void interpret_command(const char* command) {
 					else {
 						terminal_color = 0;
 					}
+					break;
+				case 5: // rng
+					size_t rand = random(0, 100);
+					char rand_str[4];
+					size_tToCharArray(rand, rand_str);
+					terminal_printString("\nRandom number (0, 100):\n");
+					terminal_printString(rand_str);
 					break;
 			}
 		}
