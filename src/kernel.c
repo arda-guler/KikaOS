@@ -11,6 +11,9 @@
 #endif
 
 #define COMMAND_BUFFER_SIZE 64
+#define MAX_NUM_COMMANDS 100
+#define MAX_COMMAND_LENGTH 64
+#define NUM_VGA_COLORS 16
 
 enum vga_color {
 	VGA_COLOR_BLACK = 0,
@@ -103,13 +106,68 @@ char ASCII_lowercase[128] =
     0,  /* All other keys are undefined */
 };
 
+size_t standard_wait = 10;
 char command_buffer[COMMAND_BUFFER_SIZE];
 
-const char *commands[] = {
+char commands[MAX_NUM_COMMANDS][MAX_COMMAND_LENGTH] = {
 	"help",
-	"title"
+	"clear",
+	"wait inc",
+	"wait dec",
+	"color"
 };
 
+int strcmp(const char* str1, const char* str2) {
+	while (*str1 != '\0' && *str2 != '\0') {
+        if (*str1 != *str2) {
+            return (*str1 - *str2);
+        }
+        str1++;
+        str2++;
+    }
+
+    return (*str1 - *str2);
+}
+
+// random size_t generator
+size_t seed = 1;
+const size_t a = 2001;
+const size_t c = 1 << 30;
+const size_t m = (1 << 63) - 1;
+
+size_t random(size_t min, size_t max){
+	size_t range = max - min;
+	seed = (a * seed + c) % m;
+	return min + (size_t)(seed % range);
+}
+
+// size_t to string converter
+void size_tToCharArray(size_t number, char* charArray) {
+    int i = 0;
+
+    // Handle the case of zero
+    if (number == 0) {
+        charArray[0] = '0';
+        charArray[1] = '\0';
+        return;
+    }
+
+    // Convert each digit of the size_t to a character
+    while (number > 0) {
+        charArray[i++] = (char)((number % 10) + '0');
+        number /= 10;
+    }
+
+    charArray[i] = '\0';
+
+    // Reverse the charArray so that it's in the correct order
+    int length = i;
+    for (i = 0; i < length / 2; i++) {
+        char temp = charArray[i];
+        charArray[i] = charArray[length - i - 1];
+        charArray[length - i - 1] = temp;
+    }
+}
 
 static inline uint8_t vga_entry_color(enum vga_color fg, enum vga_color bg)
 {
@@ -272,7 +330,7 @@ char get_kbd(char c)
 // this is probably one of the worst implementations of 'wait' ever.
 // P.S. I don't have interrupts.
 void wait(size_t wait_time){
-    for (size_t ticks=0; ticks < wait_time * 1000000000; ticks++) {
+    for (size_t ticks=0; ticks < wait_time * 100000000; ticks++) {
         asm volatile("nop");
     }
 }
@@ -283,16 +341,55 @@ void clear_command_buffer(void) {
 	}
 }
 
-// placeholder function
-void interpret_command(void) {
-	asm volatile("nop");
+// simple command interpreter
+void interpret_command(const char* command) {
+	bool command_found = false;
+
+	for (size_t i = 0; i < MAX_NUM_COMMANDS; i++) {
+		if (strcmp(command, commands[i]) == 0) {
+			command_found = true;
+			switch (i) {
+				case 0: // help
+					terminal_printString("\n");
+					terminal_printString("Available commands: help, clear, wait inc, wait dec");
+					break;
+				case 1: // clear
+					for (size_t j = 0; j < VGA_HEIGHT; j++) {
+						terminal_scroll();
+					}
+					terminal_row = 2;
+					terminal_column = 0;
+					break;
+				case 2: // inc_wait
+					standard_wait *= 2;
+					break;
+				case 3: // dec_wait
+					if (standard_wait >= 2) {
+						standard_wait /= 2;
+					}
+					break;
+				case 4: // color
+					if (terminal_color < NUM_VGA_COLORS - 1) {
+						terminal_color += 1;
+					}
+					else {
+						terminal_color = 0;
+					}
+					break;
+			}
+		}
+	}
+
+	if (!command_found) {
+		terminal_printString("\nUnrecognized command.\n");
+	}
 }
 
 void main(void)
 {
 	terminal_init();
     terminal_setTitle("= = = KikaOS Terminal = = =");
-    terminal_printString("\n\nWrite or draw away!\n > ");
+    terminal_printString("\n\nTerminal initialized.\n > ");
 
     // writes keyboard input onto the screen
     char c_inp = 0;
@@ -306,10 +403,11 @@ void main(void)
         }
 
 		else if (c_inp == 28) {
-			interpret_command();
+			interpret_command(command_buffer);
 			clear_command_buffer();
+			command_buffer_idx = 0;
 			terminal_printString("\n > ");
-			wait(1);
+			wait(standard_wait);
 		}
 
         else if (c_inp > 0) {
@@ -323,7 +421,7 @@ void main(void)
 			terminal_putChar(ASCII_char);
 			command_buffer[command_buffer_idx] = ASCII_char;
 			command_buffer_idx += 1;
-            wait(1);
+            wait(standard_wait);
         }
     }
 
