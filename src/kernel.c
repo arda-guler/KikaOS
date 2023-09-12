@@ -13,7 +13,10 @@
 #define COMMAND_BUFFER_SIZE 64
 #define MAX_NUM_COMMANDS 100
 #define MAX_COMMAND_LENGTH 64
+
 #define NUM_VGA_COLORS 16
+#define VGA_WIDTH 80
+#define VGA_HEIGHT 25
 
 enum vga_color {
 	VGA_COLOR_BLACK = 0,
@@ -34,11 +37,9 @@ enum vga_color {
 	VGA_COLOR_WHITE = 15,
 };
 
-bool type_uppercase = false;
-
 char ASCII_uppercase[128] =
 {
-    0,  27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b',
+    0,  27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b', // <--14: backspace
     '\t', /* <-- Tab */
     'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '[', ']', '\n', // <-- 28: ENTER
     0, /* <-- control key */
@@ -73,7 +74,7 @@ char ASCII_uppercase[128] =
 
 char ASCII_lowercase[128] =
 {
-    0,  27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b',
+    0,  27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b', // <--14: backspace
     '\t', /* <-- Tab */
     'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n', // <-- 28: ENTER
     0, /* <-- control key */
@@ -106,8 +107,24 @@ char ASCII_lowercase[128] =
     0,  /* All other keys are undefined */
 };
 
+// static const size_t VGA_WIDTH = 80;
+// static const size_t VGA_HEIGHT = 25;
+
 size_t standard_wait = 10;
+
+char terminal_title[];
+uint8_t terminal_title_color;
+
 char command_buffer[COMMAND_BUFFER_SIZE];
+char prev_command[COMMAND_BUFFER_SIZE];
+size_t prev_command_size;
+
+size_t terminal_row;
+size_t terminal_column;
+uint8_t terminal_color;
+uint16_t* terminal_buffer;
+
+bool type_uppercase = false;
 
 char commands[MAX_NUM_COMMANDS][MAX_COMMAND_LENGTH] = {
 	"help",
@@ -140,6 +157,14 @@ size_t random(size_t min, size_t max){
 	size_t range = max - min;
 	seed = (a * seed + c) % m;
 	return min + (size_t)(seed % range);
+}
+
+void copyCharArray(char a1[], char a2[]) {
+	size_t array_size = sizeof(a1) / sizeof(a1[0]);
+
+	for (size_t i = 0; i < array_size + 1; i++) {
+		a2[i] = a1[i];
+	}
 }
 
 // size_t to string converter
@@ -187,14 +212,6 @@ size_t strlen(const char* str)
 		len++;
 	return len;
 }
-
-static const size_t VGA_WIDTH = 80;
-static const size_t VGA_HEIGHT = 25;
-
-size_t terminal_row;
-size_t terminal_column;
-uint8_t terminal_color;
-uint16_t* terminal_buffer;
 
 void terminal_init(void)
 {
@@ -337,7 +354,7 @@ void wait(size_t wait_time){
 }
 
 void clear_command_buffer(void) {
-	for (size_t i=0; i < COMMAND_BUFFER_SIZE; i++){
+	for (size_t i = 0; i < COMMAND_BUFFER_SIZE; i++){
 		command_buffer[i] = 0;
 	}
 }
@@ -351,8 +368,9 @@ void interpret_command(const char* command) {
 			command_found = true;
 			switch (i) {
 				case 0: // help
-					terminal_printString("\n");
-					terminal_printString("Available commands: help, clear, wait inc, wait dec");
+					terminal_printString("\n\n");
+					terminal_printString("Available commands: help, clear, wait inc, wait dec,\n");
+					terminal_printString("color, rng\n");
 					break;
 				case 1: // clear
 					for (size_t j = 0; j < VGA_HEIGHT; j++) {
@@ -393,6 +411,23 @@ void interpret_command(const char* command) {
 	}
 }
 
+void terminal_backspace(void) {
+	if (terminal_column > 0) {
+		terminal_column--;
+		terminal_putChar(' ');
+		terminal_column--;
+	}
+
+	// go back one row if we are at the left edge of the screen
+	else {
+		terminal_row--;
+		terminal_column = VGA_WIDTH - 1;
+		terminal_putChar(' ');
+		terminal_row--;
+		terminal_column = VGA_WIDTH - 1;
+	}
+}
+
 void main(void)
 {
 	terminal_init();
@@ -406,30 +441,70 @@ void main(void)
 
         c_inp = get_kbd(c_inp);
 
+		// caps lock
         if (c_inp == 58) {
             type_uppercase = !type_uppercase;
         }
 
+		// enter
 		else if (c_inp == 28) {
 			interpret_command(command_buffer);
+
+			// record last used command to prev_command array, unless
+			// it was empty of course
+			if (command_buffer_idx > 0) {
+				copyCharArray(command_buffer, prev_command);
+				prev_command_size = command_buffer_idx;
+			}
+
+			// clean command buffer
 			clear_command_buffer();
 			command_buffer_idx = 0;
+
 			terminal_printString("\n > ");
 			wait(standard_wait);
 		}
 
+		// backspace
+		else if (c_inp == 14) {
+			if (command_buffer_idx > 0) {
+				terminal_backspace();
+				command_buffer[command_buffer_idx - 1] = 0;
+				command_buffer_idx--;
+				wait(standard_wait);
+			}
+		}
+
+		// up arrow (gets previous command)
+		else if (c_inp == 72) {
+			clear_command_buffer();
+
+			while (command_buffer_idx > 0) {
+				terminal_backspace();
+				command_buffer_idx--;
+			}
+
+			copyCharArray(prev_command, command_buffer);
+			command_buffer_idx = prev_command_size;
+
+			terminal_printString(command_buffer);
+			wait(standard_wait);
+		}
+
         else if (c_inp > 0) {
-			char ASCII_char;
-            if (type_uppercase) {
-				ASCII_char = ASCII_uppercase[c_inp];
-            }
-            else {
-				ASCII_char = ASCII_lowercase[c_inp];
-            }
-			terminal_putChar(ASCII_char);
-			command_buffer[command_buffer_idx] = ASCII_char;
-			command_buffer_idx += 1;
-            wait(standard_wait);
+			if (command_buffer_idx < COMMAND_BUFFER_SIZE - 1) {
+				char ASCII_char;
+	            if (type_uppercase) {
+					ASCII_char = ASCII_uppercase[c_inp];
+	            }
+	            else {
+					ASCII_char = ASCII_lowercase[c_inp];
+	            }
+				terminal_putChar(ASCII_char);
+				command_buffer[command_buffer_idx] = ASCII_char;
+				command_buffer_idx += 1;
+	            wait(standard_wait);
+			}
         }
     }
 
