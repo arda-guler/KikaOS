@@ -124,6 +124,9 @@ size_t terminal_column;
 uint8_t terminal_color;
 uint16_t* terminal_buffer;
 
+size_t cursor_row;
+size_t cursor_column;
+
 bool type_uppercase = false;
 
 char commands[MAX_NUM_COMMANDS][MAX_COMMAND_LENGTH] = {
@@ -153,7 +156,7 @@ const size_t a = 2001;
 const size_t c = 1 << 30;
 const size_t m = (1 << 63) - 1;
 
-size_t random(size_t min, size_t max){
+size_t random(size_t min, size_t max) {
 	size_t range = max - min;
 	seed = (a * seed + c) % m;
 	return min + (size_t)(seed % range);
@@ -195,26 +198,22 @@ void size_tToCharArray(size_t number, char* charArray) {
     }
 }
 
-static inline uint8_t vga_entry_color(enum vga_color fg, enum vga_color bg)
-{
+static inline uint8_t vga_entry_color(enum vga_color fg, enum vga_color bg) {
 	return fg | bg << 4;
 }
 
-static inline uint16_t vga_entry(unsigned char uc, uint8_t color)
-{
+static inline uint16_t vga_entry(unsigned char uc, uint8_t color) {
 	return (uint16_t) uc | (uint16_t) color << 8;
 }
 
-size_t strlen(const char* str)
-{
+size_t strlen(const char* str) {
 	size_t len = 0;
 	while (str[len])
 		len++;
 	return len;
 }
 
-void terminal_init(void)
-{
+void terminal_init(void) {
 	terminal_row = 0;
 	terminal_column = 0;
 	terminal_color = vga_entry_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
@@ -227,19 +226,16 @@ void terminal_init(void)
 	}
 }
 
-void terminal_setColor(uint8_t color)
-{
+void terminal_setColor(uint8_t color) {
 	terminal_color = color;
 }
 
-void terminal_putEntryAt(char c, uint8_t color, size_t x, size_t y)
-{
+void terminal_putEntryAt(char c, uint8_t color, size_t x, size_t y) {
 	const size_t index = y * VGA_WIDTH + x;
 	terminal_buffer[index] = vga_entry(c, color);
 }
 
-void terminal_scroll(void)
-{
+void terminal_scroll(void) {
     // loop through all lines
     for (size_t idx_y = 2; idx_y < VGA_HEIGHT; idx_y++){
         for (size_t idx_x = 0; idx_x < VGA_WIDTH; idx_x++) {
@@ -277,8 +273,7 @@ void terminal_setTitle(const char* title) {
     terminal_column = prev_terminal_column;
 }
 
-void terminal_putChar(char c)
-{
+void terminal_putChar(char c) {
     // this is the new line character
     if (c == '\n') {
         if (terminal_row + 1 >= VGA_HEIGHT) {
@@ -311,33 +306,28 @@ void terminal_putChar(char c)
     }
 }
 
-void terminal_print(const char* data, size_t size)
-{
+void terminal_print(const char* data, size_t size) {
 	for (size_t i = 0; i < size; i++) {
 		terminal_putChar(data[i]);
     }
 }
 
-void terminal_printString(const char* data)
-{
+void terminal_printString(const char* data) {
 	terminal_print(data, strlen(data));
 }
 
-void outb( unsigned short port, unsigned char val )
-{
+void outb(unsigned short port, unsigned char val) {
    asm volatile("outb %0, %1" : : "a"(val), "Nd"(port) );
 }
 
-static __inline unsigned char inb (unsigned short int port)
-{
+static __inline unsigned char inb (unsigned short int port) {
     unsigned char v;
 
     asm volatile("inb %w1,%0":"=a" (v):"Nd" (port));
     return v;
 }
 
-char get_kbd(char c)
-{
+char get_kbd(char c) {
     if (inb(0x60) != c){
         c = inb(0x60);
     }
@@ -347,7 +337,7 @@ char get_kbd(char c)
 
 // this is probably one of the worst implementations of 'wait' ever.
 // P.S. I don't have interrupts.
-void wait(size_t wait_time){
+void wait(size_t wait_time) {
     for (size_t ticks = 0; ticks < wait_time * 100000000; ticks++) {
         asm volatile("nop");
     }
@@ -428,11 +418,47 @@ void terminal_backspace(void) {
 	}
 }
 
+void cursor_enable(uint8_t cursor_start, uint8_t cursor_end) {
+	outb(0x3D4, 0x0A);
+	outb(0x3D5, (inb(0x3D5) & 0xC0) | cursor_start);
+
+	outb(0x3D4, 0x0B);
+	outb(0x3D5, (inb(0x3D5) & 0xE0) | cursor_end);
+}
+
+void cursor_disable() {
+	outb(0x3D4, 0x0A);
+	outb(0x3D5, 0x20);
+}
+
+void cursor_move(int x, int y) {
+	cursor_row = y;
+	cursor_column = x;
+
+	uint16_t pos = y * VGA_WIDTH + x;
+
+	outb(0x3D4, 0x0F);
+	outb(0x3D5, (uint8_t)(pos & 0xFF));
+	outb(0x3D4, 0x0E);
+	outb(0x3D5, (uint8_t)((pos >> 8) & 0xFF));
+}
+
+void cursor_update(void) {
+	uint16_t pos = cursor_row * VGA_WIDTH + cursor_column;
+
+	outb(0x3D4, 0x0F);
+	outb(0x3D5, (uint8_t)(pos & 0xFF));
+	outb(0x3D4, 0x0E);
+	outb(0x3D5, (uint8_t)((pos >> 8) & 0xFF));
+}
+
 void main(void)
 {
 	terminal_init();
     terminal_setTitle("= = = KikaOS Terminal = = =");
     terminal_printString("\n\nTerminal initialized.\n > ");
+	cursor_enable(0, 15);
+	cursor_move(3, 3);
 
     // writes keyboard input onto the screen
     char c_inp = 0;
@@ -462,7 +488,7 @@ void main(void)
 			command_buffer_idx = 0;
 
 			terminal_printString("\n > ");
-			wait(standard_wait);
+			// wait(standard_wait);
 		}
 
 		// backspace
@@ -471,7 +497,7 @@ void main(void)
 				terminal_backspace();
 				command_buffer[command_buffer_idx - 1] = 0;
 				command_buffer_idx--;
-				wait(standard_wait);
+				// wait(standard_wait);
 			}
 		}
 
@@ -488,7 +514,7 @@ void main(void)
 			command_buffer_idx = prev_command_size;
 
 			terminal_printString(command_buffer);
-			wait(standard_wait);
+			// wait(standard_wait);
 		}
 
         else if (c_inp > 0) {
@@ -503,9 +529,11 @@ void main(void)
 				terminal_putChar(ASCII_char);
 				command_buffer[command_buffer_idx] = ASCII_char;
 				command_buffer_idx += 1;
-	            wait(standard_wait);
+	            // wait(standard_wait);
 			}
         }
+		cursor_move(terminal_column, terminal_row);
+		wait(standard_wait);
     }
 
     terminal_printString("\n\n - - - END - - -\n");
