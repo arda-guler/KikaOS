@@ -6,6 +6,7 @@ I took the [Bare Bones](https://wiki.osdev.org/Bare_Bones) x86 C kernel tutorial
 - Basic command interpreter
 - Implementing terminal title
 - Pseudo-random number generator
+- A working text mode cursor
 
 ...which makes it a DOS-like command line rather than a poor 'Hello World'.
 
